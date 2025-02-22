@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Disposition des Boîtiers</title>
+    <!-- Inclusion de React et ReactDOM via un CDN -->
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <!-- Inclusion de Babel pour transpiler le JSX dans le navigateur (uniquement pour le développement) -->
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Votre code React écrit en JSX -->
+    <script type="text/babel">
+      // Exemple d'un composant principal
+      function App() {
+        return (
+          <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+            <h1>Disposition des Boîtiers</h1>
+            <p>Bienvenue dans votre application de disposition.</p>
+            {/* Ici, vous pourrez ajouter d'autres composants pour la configuration et l'affichage */}
+          </div>
+        );
+      }
+
+      // Montage de l'application dans la div avec id "root"
+      ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+  </body>
+</html>
