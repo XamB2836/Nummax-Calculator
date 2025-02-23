@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/nummax-interface/static/css/main.30a31223.css",
+    "main.js": "/nummax-interface/static/js/main.42374f2b.js",
+    "static/js/453.de2efa7f.chunk.js": "/nummax-interface/static/js/453.de2efa7f.chunk.js",
+    "index.html": "/nummax-interface/index.html",
+    "main.30a31223.css.map": "/nummax-interface/static/css/main.30a31223.css.map",
+    "main.42374f2b.js.map": "/nummax-interface/static/js/main.42374f2b.js.map",
+    "453.de2efa7f.chunk.js.map": "/nummax-interface/static/js/453.de2efa7f.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.30a31223.css",
+    "static/js/main.42374f2b.js"
+  ]
+}
