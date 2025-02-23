@@ -2,7 +2,7 @@
   "name": "nummax-interface",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://votre-utilisateur.github.io/nummax-interface",
+  "homepage": "https://xamb2836.github.io/Nummax-Calculator/",
   "dependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
