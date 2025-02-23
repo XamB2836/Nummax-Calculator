@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 
 // Exemple de données pour les panneaux LED
 const ledPanels = [
-  { id: 'panel1', name: 'Panneau LED A', wattPerM2: 100 },
+  { id: 'panel1', name: 'Panneau LED A', wattPerM2: 550 },
   { id: 'panel2', name: 'Panneau LED B', wattPerM2: 150 },
   { id: 'panel3', name: 'Panneau LED C', wattPerM2: 200 },
 ];
@@ -42,7 +42,7 @@ function WattageCalculator() {
             type="number" 
             value={width} 
             onChange={(e) => setWidth(e.target.value)} 
-            placeholder="Ex: 1920" 
+            placeholder="Ex: 1120" 
           />
         </label>
       </div>
@@ -53,7 +53,7 @@ function WattageCalculator() {
             type="number" 
             value={height} 
             onChange={(e) => setHeight(e.target.value)} 
-            placeholder="Ex: 1080" 
+            placeholder="Ex: 640" 
           />
         </label>
       </div>
