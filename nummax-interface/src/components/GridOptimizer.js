@@ -1,26 +1,19 @@
 import React, { useState } from 'react';
 
 // ----- Fixed Dimensions -----
-// Standard (non-rotated) standard cell is fixed at 1120x640.
 const STANDARD_WIDTH = 1120;
 const STANDARD_HEIGHT = 640;
-
-// Rotated standard cell is fixed at 640x1120.
 const ROTATED_WIDTH = 640;
 const ROTATED_HEIGHT = 1120;
-
-// For standard layout, full rows are 640 mm tall.
 const FULL_ROW_HEIGHT = 640;
 
-// LED module sizes for subdividing cells:
-// In standard layout, we want to “rotate” the LED modules so that a 1120×640 cell
-// subdivides exactly into 7 columns and 2 rows; that is, use modules of 160×320.
-// In rotated layout, we use modules of 320×160.
-const LED_STANDARD = { width: 320, height: 160 }; // used in rotated layout
-const LED_ROTATED = { width: 160, height: 320 };   // used in standard layout
+// ----- LED Module Sizes -----
+// For standard layout, we use LED modules rotated (160×320)
+// For rotated layout, we use LED modules in normal orientation (320×160)
+const LED_STANDARD = { width: 320, height: 160 };
+const LED_ROTATED = { width: 160, height: 320 };
 
 // ----- Pre-made Custom Cases -----
-// Add or update custom case sizes here.
 const preMadeCustomCases = [
   { id: 'custom-1120x480', width: 1120, height: 480 },
   { id: 'custom-1440x480', width: 1440, height: 480 },
@@ -32,32 +25,28 @@ const preMadeCustomCases = [
   { id: 'custom-1280x160', width: 1280, height: 160 },
 ];
 
-// ----- Allowed Custom Sizes -----
-// For standard layout full rows, we use a fixed desired height of 640.
-const allowedCustomWidthsStandard = [1120, 1280];
-// For bottom rows in standard layout, instead of a fixed height (like 320),
-// we now allow ANY remainder that appears in our custom case list.
-// (We’ll derive allowed widths dynamically for the actual remainder.)
-//
-// For rotated layout, bottom row height must be one of the custom case heights available.
-// (E.g. if you have cases with height 480, 160, etc., the algorithm will accept a remainder equal to one of those.)
+// ----- Allowed Custom Sizes for Tiling -----
 function getAllowedWidthsForHeight(desiredHeight) {
   const widths = new Set();
   preMadeCustomCases.forEach(c => {
-    if (c.height === desiredHeight) {
-      widths.add(c.width);
-    }
+    if (c.height === desiredHeight) widths.add(c.width);
   });
   return Array.from(widths).sort((a, b) => a - b);
 }
 
-// ----- Partitioning Function -----
-// Recursively find one partition (array of numbers) that sums exactly to target,
-// using only numbers from allowedSet.
-function partitionColumns(target, allowedSet) {
+// For full rows, allow the standard width and any custom case with height 640.
+const allowedCustomWidthsStandard = Array.from(new Set([STANDARD_WIDTH, ...getAllowedWidthsForHeight(FULL_ROW_HEIGHT)]));
+// For rotated layout bottom row, we expect a custom case height (e.g., 480)
+const allowedCustomHeightsRotated = [480];
+
+// ----- Partitioning Functions -----
+// Recursive function to get an exact partition using allowedSet.
+function partitionColumnsExact(target, allowedSet) {
+  // Try larger cells first.
+  const sorted = allowedSet.slice().sort((a, b) => b - a);
   function helper(remaining, current) {
     if (remaining === 0) return current;
-    for (let w of allowedSet) {
+    for (let w of sorted) {
       if (w <= remaining) {
         const result = helper(remaining - w, current.concat(w));
         if (result !== null) return result;
@@ -68,15 +57,36 @@ function partitionColumns(target, allowedSet) {
   return helper(target, []);
 }
 
-// ----- Helper Functions -----
-// Find a pre-made custom case that exactly matches the given dimensions.
-function findMatchingCustomCase(zoneWidth, zoneHeight) {
-  return preMadeCustomCases.find(
-    (c) => c.width === zoneWidth && c.height === zoneHeight
-  );
+// Partition columns, and if the leftover gap is less than minAllowed,
+// merge it with the last partition (if available) so that no missing case is smaller than an LED module.
+function partitionColumnsWithMissing(target, allowedSet, minAllowed) {
+  const exact = partitionColumnsExact(target, allowedSet);
+  if (exact !== null) {
+    return { partition: exact, missing: 0 };
+  } else {
+    const sorted = allowedSet.slice().sort((a, b) => b - a);
+    let partition = [];
+    let remaining = target;
+    for (let w of sorted) {
+      while (remaining >= w) {
+        partition.push(w);
+        remaining -= w;
+      }
+    }
+    // If the leftover gap is too small (smaller than an LED module) merge it with the last partition.
+    if (remaining > 0 && remaining < minAllowed && partition.length > 0) {
+      partition[partition.length - 1] += remaining;
+      remaining = 0;
+    }
+    return { partition, missing: remaining };
+  }
 }
 
-// Generate a summary of cases used, grouped by their dimensions.
+// ----- Custom Case Finder & Summary -----
+function findMatchingCustomCase(zoneWidth, zoneHeight) {
+  return preMadeCustomCases.find(c => c.width === zoneWidth && c.height === zoneHeight);
+}
+
 function generateCaseSummary(cases) {
   const summary = {};
   cases.forEach(c => {
@@ -86,28 +96,21 @@ function generateCaseSummary(cases) {
   return summary;
 }
 
-// ----- Layout Computation -----
-//
-// Standard Layout:
-// - Full rows: each full row has height 640. We assume standard cells are 1120×640.
-//   For each full row, we tile the row by first placing as many standard cells as possible (each 1120 wide),
-//   then the residual width (if any) is partitioned using allowed widths for height 640.
-// - Bottom row: let bottomRemainder = screenHeight mod 640. If bottomRemainder > 0,
-//   then if there exist any custom cases with height equal to bottomRemainder (derived dynamically),
-//   we partition the entire row using those allowed widths; otherwise, the layout is invalid.
+// ----- Layout Computation Functions -----
+
+// Standard Layout: partition full rows and bottom row; add missing cells if needed.
 function computeStandardLayout(screenWidth, screenHeight) {
-  const layout = { standardCases: [], customCases: [], valid: true };
+  const layout = { standardCases: [], customCases: [], missingCases: [], valid: true };
   const fullRows = Math.floor(screenHeight / FULL_ROW_HEIGHT);
-  const bottomRemainder = screenHeight % FULL_ROW_HEIGHT;
+  const bottomHeight = screenHeight % FULL_ROW_HEIGHT;
+
+  // Allowed widths for full rows: standard width and any custom case with height 640.
+  const allowedFull = Array.from(new Set([STANDARD_WIDTH, ...getAllowedWidthsForHeight(FULL_ROW_HEIGHT)]));
   
-  // For full rows:
-  const partitionFull = partitionColumns(screenWidth, allowedCustomWidthsStandard);
-  if (!partitionFull) {
-    layout.valid = false;
-    return layout;
-  }
   for (let row = 0; row < fullRows; row++) {
     let xOffset = 0;
+    // For standard layout, use LED_ROTATED so minimum allowed width is 160.
+    const { partition: partitionFull, missing: missingFull } = partitionColumnsWithMissing(screenWidth, allowedFull, LED_ROTATED.width);
     partitionFull.forEach(w => {
       if (w === STANDARD_WIDTH) {
         layout.standardCases.push({
@@ -129,29 +132,51 @@ function computeStandardLayout(screenWidth, screenHeight) {
       }
       xOffset += w;
     });
+    if (missingFull > 0) {
+      layout.missingCases.push({
+        x: xOffset,
+        y: row * FULL_ROW_HEIGHT,
+        width: missingFull,
+        height: FULL_ROW_HEIGHT,
+        type: 'missing'
+      });
+      xOffset += missingFull;
+    }
+    if (xOffset !== screenWidth) {
+      layout.valid = false;
+    }
   }
-  // For bottom row:
-  if (bottomRemainder > 0) {
-    // Get allowed widths for the actual bottom row height.
-    const allowedBottom = getAllowedWidthsForHeight(bottomRemainder);
+  
+  // Process bottom row if there is a remainder.
+  if (bottomHeight > 0) {
+    const allowedBottom = getAllowedWidthsForHeight(bottomHeight);
     if (allowedBottom.length === 0) {
       layout.valid = false;
     } else {
-      const partitionBottom = partitionColumns(screenWidth, allowedBottom);
-      if (partitionBottom) {
-        let xOffset = 0;
-        partitionBottom.forEach(w => {
-          const match = findMatchingCustomCase(w, bottomRemainder);
-          layout.customCases.push({
-            x: xOffset,
-            y: fullRows * FULL_ROW_HEIGHT,
-            width: w,
-            height: bottomRemainder,
-            type: match ? 'custom (pre-made)' : 'custom'
-          });
-          xOffset += w;
+      let xOffset = 0;
+      const { partition: partitionBottom, missing: missingBottom } = partitionColumnsWithMissing(screenWidth, allowedBottom, LED_ROTATED.width);
+      partitionBottom.forEach(w => {
+        const match = findMatchingCustomCase(w, bottomHeight);
+        layout.customCases.push({
+          x: xOffset,
+          y: fullRows * FULL_ROW_HEIGHT,
+          width: w,
+          height: bottomHeight,
+          type: match ? 'custom (pre-made)' : 'custom'
         });
-      } else {
+        xOffset += w;
+      });
+      if (missingBottom > 0) {
+        layout.missingCases.push({
+          x: xOffset,
+          y: fullRows * FULL_ROW_HEIGHT,
+          width: missingBottom,
+          height: bottomHeight,
+          type: 'missing'
+        });
+        xOffset += missingBottom;
+      }
+      if (xOffset !== screenWidth) {
         layout.valid = false;
       }
     }
@@ -159,12 +184,9 @@ function computeStandardLayout(screenWidth, screenHeight) {
   return layout;
 }
 
-// Rotated Layout:
-// - Top row: fill with rotated standard cells (each 640×1120). We require that screenWidth is divisible by 640.
-// - Bottom row: let bottomHeight = screenHeight - 1120. If there exist custom cases with that bottom height,
-//   partition the entire screen width using the allowed widths for that bottom height.
+// Rotated Layout: fill the top row with rotated standard cells and partition the bottom row similarly.
 function computeRotatedLayout(screenWidth, screenHeight) {
-  const layout = { standardCases: [], customCases: [], valid: true };
+  const layout = { standardCases: [], customCases: [], missingCases: [], valid: true };
   if (screenWidth % ROTATED_WIDTH !== 0) {
     layout.valid = false;
     return layout;
@@ -180,33 +202,50 @@ function computeRotatedLayout(screenWidth, screenHeight) {
     });
   }
   const bottomHeight = screenHeight - ROTATED_HEIGHT;
+  if (bottomHeight < 0) {
+    layout.valid = false;
+    return layout;
+  }
+  if (bottomHeight === 0) return layout;
+  
   const allowedRotated = getAllowedWidthsForHeight(bottomHeight);
   if (allowedRotated.length === 0) {
     layout.valid = false;
     return layout;
   }
-  const partition = partitionColumns(screenWidth, allowedRotated);
-  if (partition) {
-    let xOffset = 0;
-    partition.forEach(w => {
-      const match = findMatchingCustomCase(w, bottomHeight);
-      layout.customCases.push({
-        x: xOffset,
-        y: ROTATED_HEIGHT,
-        width: w,
-        height: bottomHeight,
-        type: match ? 'custom (pre-made)' : 'custom'
-      });
-      xOffset += w;
+  let xOffset = 0;
+  // For rotated layout, bottom row uses LED_STANDARD so the minimum allowed width is 320.
+  const { partition: partitionBottom, missing: missingBottom } = partitionColumnsWithMissing(screenWidth, allowedRotated, LED_STANDARD.width);
+  partitionBottom.forEach(w => {
+    const match = findMatchingCustomCase(w, bottomHeight);
+    layout.customCases.push({
+      x: xOffset,
+      y: ROTATED_HEIGHT,
+      width: w,
+      height: bottomHeight,
+      type: match ? 'custom (pre-made)' : 'custom'
     });
-  } else {
+    xOffset += w;
+  });
+  if (missingBottom > 0) {
+    layout.missingCases.push({
+      x: xOffset,
+      y: ROTATED_HEIGHT,
+      width: missingBottom,
+      height: bottomHeight,
+      type: 'missing'
+    });
+    xOffset += missingBottom;
+  }
+  if (xOffset !== screenWidth) {
     layout.valid = false;
   }
   return layout;
 }
 
 // ----- LED Module Subdivisions -----
-// Draw LED module grid lines inside a cell using given LED module dimensions.
+// Render grid lines within a case. A global grid alignment is used to help minimize overlapping LED modules.
+// (TODO: Further optimize overlapping modules across case boundaries if needed.)
 function renderSubdivisions(c, scale, moduleWidth, moduleHeight) {
   const lines = [];
   const startX = Math.ceil(c.x / moduleWidth) * moduleWidth;
@@ -240,24 +279,25 @@ function renderSubdivisions(c, scale, moduleWidth, moduleHeight) {
   return lines;
 }
 
-// Compute the number of LED modules in a cell.
 function computeModuleCount(c, moduleWidth, moduleHeight) {
   return (c.width / moduleWidth) * (c.height / moduleHeight);
 }
 
 // ----- Candidate Selection -----
-// Choose between standard and rotated layouts based on validity and exact area coverage.
+// Choose between standard and rotated layouts based on validity and area coverage.
 function chooseLayout(screenWidth, screenHeight) {
   const standard = computeStandardLayout(screenWidth, screenHeight);
   const rotated = computeRotatedLayout(screenWidth, screenHeight);
   const screenArea = screenWidth * screenHeight;
   const areaStandard =
     standard.standardCases.reduce((sum, c) => sum + c.width * c.height, 0) +
-    standard.customCases.reduce((sum, c) => sum + c.width * c.height, 0);
+    standard.customCases.reduce((sum, c) => sum + c.width * c.height, 0) +
+    standard.missingCases.reduce((sum, c) => sum + c.width * c.height, 0);
   const areaRotated =
     rotated && rotated.valid
       ? rotated.standardCases.reduce((sum, c) => sum + c.width * c.height, 0) +
-        rotated.customCases.reduce((sum, c) => sum + c.width * c.height, 0)
+        rotated.customCases.reduce((sum, c) => sum + c.width * c.height, 0) +
+        rotated.missingCases.reduce((sum, c) => sum + c.width * c.height, 0)
       : -1;
   if (rotated && rotated.valid && areaRotated === screenArea) {
     return { layout: rotated, mode: 'rotated' };
@@ -272,89 +312,156 @@ function chooseLayout(screenWidth, screenHeight) {
 
 // ----- Main Component -----
 function GridOptimizer() {
-  // Test screen sizes – adjust these to test various cases.
-  const [screenWidth, setScreenWidth] = useState(2240);
-  const [screenHeight, setScreenHeight] = useState(3200);
+  // Define some style objects for a cleaner UI.
+  const containerStyle = {
+    fontFamily: 'Arial, sans-serif',
+    color: '#fff',
+    backgroundColor: '#222',
+    padding: '20px',
+    borderRadius: '8px',
+    maxWidth: '900px',
+    margin: '20px auto'
+  };
+  const headingStyle = {
+    marginBottom: '15px',
+    borderBottom: '2px solid #555',
+    paddingBottom: '5px'
+  };
+  const infoStyle = {
+    margin: '8px 0',
+    fontSize: '16px'
+  };
+  const inputStyle = {
+    padding: '6px 10px',
+    borderRadius: '4px',
+    border: '1px solid #555',
+    backgroundColor: '#333',
+    color: '#fff'
+  };
+  const listStyle = {
+    listStyleType: 'none',
+    padding: '0'
+  };
+  const subHeadingStyle = {
+    marginTop: '15px',
+    textDecoration: 'underline'
+  };
+
+  const [screenWidth, setScreenWidth] = useState(1120);
+  const [screenHeight, setScreenHeight] = useState(640);
   
   const candidate = chooseLayout(screenWidth, screenHeight);
   const finalLayout = candidate.layout;
   const mode = candidate.mode;
   
-  // Set LED module dimensions based on layout mode.
-  // For standard layout, we want LED modules rotated (160x320) to perfectly subdivide a 1120x640 cell.
-  // For rotated layout, we use LED modules in normal orientation (320x160).
+  // Choose LED module orientation based on layout mode.
   const ledModule = mode === 'rotated' ? LED_STANDARD : LED_ROTATED;
   
   const screenArea = screenWidth * screenHeight;
   const computedArea =
     finalLayout.standardCases.reduce((sum, c) => sum + c.width * c.height, 0) +
-    finalLayout.customCases.reduce((sum, c) => sum + c.width * c.height, 0);
+    finalLayout.customCases.reduce((sum, c) => sum + c.width * c.height, 0) +
+    finalLayout.missingCases.reduce((sum, c) => sum + c.width * c.height, 0);
   const areaWarning = computedArea !== screenArea ? "WARNING: The computed cells do not completely fill the screen!" : "";
   
   const totalModules =
     finalLayout.standardCases.reduce((sum, c) => sum + computeModuleCount(c, ledModule.width, ledModule.height), 0) +
     finalLayout.customCases.reduce((sum, c) => sum + computeModuleCount(c, ledModule.width, ledModule.height), 0);
+    // Missing cells are not used for LED modules.
   
   const summaryStandard = generateCaseSummary(finalLayout.standardCases);
   const summaryCustom = generateCaseSummary(finalLayout.customCases);
+  const summaryMissing = generateCaseSummary(finalLayout.missingCases);
   
   const scale = 0.2;
   
   return (
-    <div style={{ marginTop: '20px' }}>
-      <h2>Grid Optimizer</h2>
-      <div style={{ marginBottom: '10px' }}>
-        <label>
+    <div style={containerStyle}>
+      <h2 style={headingStyle}>Grid Optimizer</h2>
+      <div style={{ marginBottom: '15px' }}>
+        <label style={infoStyle}>
           Screen Width (mm):&nbsp;
-          <input type="number" value={screenWidth} onChange={(e) => setScreenWidth(parseInt(e.target.value) || 0)} />
+          <input
+            type="number"
+            style={inputStyle}
+            value={screenWidth}
+            onChange={(e) => setScreenWidth(parseInt(e.target.value) || 0)}
+          />
         </label>
-        <label style={{ marginLeft: '10px' }}>
+        <label style={{ ...infoStyle, marginLeft: '15px' }}>
           Screen Height (mm):&nbsp;
-          <input type="number" value={screenHeight} onChange={(e) => setScreenHeight(parseInt(e.target.value) || 0)} />
+          <input
+            type="number"
+            style={inputStyle}
+            value={screenHeight}
+            onChange={(e) => setScreenHeight(parseInt(e.target.value) || 0)}
+          />
         </label>
       </div>
-      <p>Screen: {screenWidth} x {screenHeight} mm</p>
-      <p>Layout mode: {mode} {finalLayout.valid ? "(Valid)" : "(Invalid tiling!)"}</p>
-      {areaWarning && <p style={{ color: 'red', fontWeight: 'bold' }}>{areaWarning}</p>}
-      <p>Total LED modules used: {totalModules.toFixed(1)}</p>
-      <svg width={screenWidth * scale} height={screenHeight * scale} style={{ border: '1px solid #fff', background: '#333' }}>
+      <p style={infoStyle}>Screen: {screenWidth} x {screenHeight} mm</p>
+      <p style={infoStyle}>Layout mode: {mode} {finalLayout.valid ? "(Valid)" : "(Invalid tiling!)"}</p>
+      {areaWarning && <p style={{ ...infoStyle, color: '#ff4d4d', fontWeight: 'bold' }}>{areaWarning}</p>}
+      <p style={infoStyle}>Total LED modules used: {totalModules.toFixed(1)}</p>
+      <svg
+        width={screenWidth * scale}
+        height={screenHeight * scale}
+        style={{ border: '1px solid #fff', background: '#333', display: 'block', margin: '20px auto' }}
+      >
         {finalLayout.standardCases.map((c, i) => (
           <g key={`std-${i}`}>
             <rect x={c.x * scale} y={c.y * scale} width={c.width * scale} height={c.height * scale} fill="green" stroke="white" strokeWidth="2" />
             {renderSubdivisions(c, scale, ledModule.width, ledModule.height)}
-            <text x={(c.x + c.width/2) * scale} y={(c.y + c.height/2) * scale} fill="white" fontSize="16" textAnchor="middle">
+            <text x={(c.x + c.width/2) * scale} y={(c.y + c.height/2) * scale} fill="#fff" fontSize="16" textAnchor="middle" style={{ fontFamily: 'Arial, sans-serif', fontWeight: 'bold' }}>
               {c.width}x{c.height}
             </text>
           </g>
         ))}
         {finalLayout.customCases.map((c, i) => (
           <g key={`cust-${i}`}>
-            <rect x={c.x * scale} y={c.y * scale} width={(c.width || 0) * scale} height={(c.height || 0) * scale} fill="orange" stroke="white" strokeWidth="2" />
+            <rect x={c.x * scale} y={c.y * scale} width={c.width * scale} height={c.height * scale} fill="orange" stroke="white" strokeWidth="2" />
             {renderSubdivisions(c, scale, ledModule.width, ledModule.height)}
-            <text x={(c.x + c.width/2) * scale} y={(c.y + c.height/2) * scale} fill="white" fontSize="16" textAnchor="middle">
+            <text x={(c.x + c.width/2) * scale} y={(c.y + c.height/2) * scale} fill="#fff" fontSize="16" textAnchor="middle" style={{ fontFamily: 'Arial, sans-serif', fontWeight: 'bold' }}>
+              {c.width}x{c.height}
+            </text>
+          </g>
+        ))}
+        {finalLayout.missingCases.map((c, i) => (
+          <g key={`miss-${i}`}>
+            <rect x={c.x * scale} y={c.y * scale} width={c.width * scale} height={c.height * scale} fill="red" stroke="white" strokeWidth="2" />
+            <text x={(c.x + c.width/2) * scale} y={(c.y + c.height/2) * scale} fill="#fff" fontSize="16" textAnchor="middle" style={{ fontFamily: 'Arial, sans-serif', fontWeight: 'bold' }}>
               {c.width}x{c.height}
             </text>
           </g>
         ))}
       </svg>
-      <div style={{ marginTop: '10px' }}>
-        <h3>Case Summary</h3>
-        <div>
+      <div style={{ marginTop: '20px' }}>
+        <h3 style={subHeadingStyle}>Case Summary</h3>
+        <div style={infoStyle}>
           <strong>Standard:</strong>
-          <ul>
+          <ul style={listStyle}>
             {Object.entries(summaryStandard).map(([size, count]) => (
               <li key={size}>{size}: {count}</li>
             ))}
           </ul>
         </div>
-        <div>
+        <div style={infoStyle}>
           <strong>Custom:</strong>
-          <ul>
+          <ul style={listStyle}>
             {Object.entries(summaryCustom).map(([size, count]) => (
               <li key={size}>{size}: {count}</li>
             ))}
           </ul>
         </div>
+        {Object.keys(summaryMissing).length > 0 && (
+          <div style={infoStyle}>
+            <strong>Missing:</strong>
+            <ul style={listStyle}>
+              {Object.entries(summaryMissing).map(([size, count]) => (
+                <li key={size}>{size}: {count}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

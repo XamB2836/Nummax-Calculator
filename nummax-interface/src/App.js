@@ -1,7 +1,6 @@
 // src/App.js
 import React from 'react';
 import Header from './components/Header'; // Votre header déjà créé
-import LayoutDesigner from './components/LayoutDesigner';
 import WattageCalculator from './components/WattageCalculator';
 import GridOptimizer from './components/GridOptimizer';
 import './App.css';
@@ -15,7 +14,6 @@ function App() {
     <div className="app">
       <Header />
       <main>
-        <LayoutDesigner />
         <WattageCalculator />
         <GridOptimizer screenWidth={screenWidth} screenHeight={screenHeight} />
       </main>
