@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/Nummax-Calculator/static/css/main.30a31223.css",
-    "main.js": "/Nummax-Calculator/static/js/main.d09010d1.js",
+    "main.js": "/Nummax-Calculator/static/js/main.30f5f4e3.js",
     "static/js/453.de2efa7f.chunk.js": "/Nummax-Calculator/static/js/453.de2efa7f.chunk.js",
     "index.html": "/Nummax-Calculator/index.html",
     "main.30a31223.css.map": "/Nummax-Calculator/static/css/main.30a31223.css.map",
-    "main.d09010d1.js.map": "/Nummax-Calculator/static/js/main.d09010d1.js.map",
+    "main.30f5f4e3.js.map": "/Nummax-Calculator/static/js/main.30f5f4e3.js.map",
     "453.de2efa7f.chunk.js.map": "/Nummax-Calculator/static/js/453.de2efa7f.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.30a31223.css",
-    "static/js/main.d09010d1.js"
+    "static/js/main.30f5f4e3.js"
   ]
 }
