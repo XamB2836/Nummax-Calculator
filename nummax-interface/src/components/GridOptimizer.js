@@ -15,7 +15,7 @@ const LED_STANDARD = { width: 320, height: 160 };   // pour le layout pivoté
 
 // ----- Pre-made Custom Cases -----
 const preMadeCustomCases = [
-  
+
 
   // On peut ajouter ici les définitions de boîtiers sur mesure préfabriqués.
 ];
@@ -350,7 +350,7 @@ function GridOptimizer() {
     const invalidRed = subdivided.some(cell => cell.width !== ledModule.width || cell.height !== ledModule.height);
     if (invalidRed) {
       finalLayout.valid = false;
-      finalLayout.warning = "Certaines zones rouges ne se subdivisent pas correctement en modules LED complets.";
+      finalLayout.warning = "WARNING: Screen size must be a multiple of 320x160!";
     }
     finalLayout.missingCases = subdivided;
   }
@@ -362,7 +362,7 @@ function GridOptimizer() {
     finalLayout.missingCases.reduce((sum, c) => sum + c.width * c.height, 0);
   const areaWarning =
     finalLayout.warning ||
-    (computedArea !== screenArea ? "WARNING: Les cellules calculées ne couvrent pas entièrement l'écran!" : "");
+    (computedArea !== screenArea ? "WARNING: Screen size must be a multiple of 320x160!" : "");
 
   const totalModules =
     finalLayout.standardCases.reduce((sum, c) => sum + computeModuleCount(c, ledModule.width, ledModule.height), 0) +
